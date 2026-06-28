@@ -207,7 +207,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       const stream = await getMicStream();
       streamRef.current = stream;
       const mimeType = supportedAudioMimeType();
-      const session = await api.startAudio(current.id, mimeType || undefined);
+      const session = await api.startAudio(current.id, mimeType || undefined, startingTranscript);
       sessionRef.current = session.session_id;
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = async (event) => {

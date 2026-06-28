@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/audio", tags=["audio"])
 @router.post("/start")
 def start(payload: AudioStartRequest, db: Session = Depends(get_db)):
     try:
-        session = start_audio_session(db, payload.note_id, payload.mime_type)
+        session = start_audio_session(db, payload.note_id, payload.mime_type, payload.baseline_text)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"session_id": session.session_id, "note_id": session.note_id, "file_name": session.file_path}

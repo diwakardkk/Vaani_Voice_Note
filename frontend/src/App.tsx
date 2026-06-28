@@ -160,6 +160,16 @@ export default function App() {
 
   function onEditorChange(html: string, text: string) {
     if (!active) return;
+    const localNote = {
+      ...active,
+      html_content: html,
+      plain_text: text,
+      clean_transcript: text,
+      raw_transcript: active.raw_transcript || text,
+      status: "saving"
+    };
+    setActive(localNote);
+    setNotes((current) => current.map((note) => (note.id === active.id ? localNote : note)));
     window.clearTimeout(autosaveRef.current);
     setSaveStatus("Saving...");
     autosaveRef.current = window.setTimeout(async () => {
@@ -255,9 +265,9 @@ export default function App() {
     setSaveStatus("Decorating...");
     try {
       const result = await api.decorate(note.id);
-      mergeNote(result.note);
+      replaceNote(result.note);
       setSaveStatus("Saved");
-      showStatus(`Decorated copy created from ${noteLabel(note)}.`);
+      showStatus(`Decorated ${noteLabel(note)} and appended Raw Original.`);
     } catch (error) {
       setSaveStatus("Error saving");
       showStatus(error instanceof Error ? error.message : "Decorate failed", "error");

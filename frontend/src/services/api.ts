@@ -62,11 +62,11 @@ export const api = {
     request<Note>(`/api/notes/${id}`, { method: "PUT", headers: jsonHeaders, body: JSON.stringify(payload) }),
   deleteNote: (id: number) => request<Note>(`/api/notes/${id}`, { method: "DELETE" }),
   restoreNote: (id: number) => request<Note>(`/api/notes/${id}/restore`, { method: "POST" }),
-  startAudio: (note_id: number, mime_type?: string) =>
+  startAudio: (note_id: number, mime_type?: string, baseline_text?: string) =>
     request<{ session_id: string; note_id: number; file_name: string }>("/api/audio/start", {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ note_id, mime_type })
+      body: JSON.stringify({ note_id, mime_type, baseline_text })
     }),
   uploadChunk: (session_id: string, blob: Blob) => {
     const form = new FormData();

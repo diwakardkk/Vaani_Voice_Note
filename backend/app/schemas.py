@@ -58,6 +58,7 @@ class NoteOut(NoteBase):
 class AudioStartRequest(BaseModel):
     note_id: int
     mime_type: str | None = "audio/webm"
+    baseline_text: str | None = None
 
 
 class AudioStartResponse(BaseModel):

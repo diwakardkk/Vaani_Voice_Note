@@ -24,7 +24,7 @@ def extension_from_mime(mime_type: str | None) -> str:
     return ".webm"
 
 
-def start_audio_session(db: Session, note_id: int, mime_type: str | None) -> AudioSession:
+def start_audio_session(db: Session, note_id: int, mime_type: str | None, baseline_text: str | None = None) -> AudioSession:
     session_id = uuid.uuid4().hex
     file_name = f"note-{note_id}-{session_id}{extension_from_mime(mime_type)}"
     path = AUDIO_DIR / file_name
@@ -33,7 +33,8 @@ def start_audio_session(db: Session, note_id: int, mime_type: str | None) -> Aud
     db.add(session)
     note = db.get(Note, note_id)
     if note:
-        _SESSION_BASELINES[session_id] = (note.plain_text or note.clean_transcript or note.raw_transcript or "").strip()
+        baseline = baseline_text if baseline_text is not None else note.plain_text or note.clean_transcript or note.raw_transcript or ""
+        _SESSION_BASELINES[session_id] = baseline.strip()
         note.audio_path = str(path)
         note.status = "recording"
     db.commit()
