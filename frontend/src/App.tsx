@@ -1,4 +1,4 @@
-import { Copy, Download, FileText, Languages, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Download, FileText, Info, Languages, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import NoteEditor from "./components/NoteEditor";
@@ -19,6 +19,17 @@ const NOTE_TYPES = [
   "Personal Note",
   "General Note"
 ];
+
+const NOTE_TYPE_HELP: Record<string, string> = {
+  "Book Writing": "Draft chapters, scenes, outlines, and long-form writing notes.",
+  "Doctor Note": "Medical visit drafts. Shows a doctor-review warning before use.",
+  "Student Note": "Class notes, study points, explanations, and revision material.",
+  "Business Note": "Work notes, plans, client calls, decisions, and follow-ups.",
+  "Research Note": "Research ideas, observations, citations, and experiment notes.",
+  "Meeting Note": "Meeting minutes, decisions, attendees, and action items.",
+  "Personal Note": "Private thoughts, reminders, diary-style notes, and personal planning.",
+  "General Note": "Default flexible note type for anything else."
+};
 
 type Banner = { message: string; tone: "info" | "warning" | "error" } | null;
 type PendingConfirmation = { title: string; message: string; label: string; phrase?: string; action: () => void } | null;
@@ -332,6 +343,14 @@ export default function App() {
     return note ? `"${note.title}"` : "this note";
   }
 
+  function statusText(): string {
+    const current = active?.status || "";
+    if (!current) return saveStatus;
+    if (saveStatus.toLowerCase() === current.toLowerCase()) return saveStatus;
+    if (saveStatus === "Saved" && current === "saved") return saveStatus;
+    return `${saveStatus} · ${current}`;
+  }
+
   async function submitWakeCommand(command: string) {
     const cleaned = command.trim();
     if (!cleaned) return;
@@ -530,19 +549,28 @@ export default function App() {
               placeholder="Untitled voice note"
               disabled={!active}
             />
-            <div className="mt-1 flex items-center gap-3 text-sm text-gray-600">
-              <select
-                className="rounded border border-gray-200 bg-white px-2 py-1"
-                value={active?.note_type || "General Note"}
-                onChange={(event) => void updateActive({ note_type: event.target.value })}
-                disabled={!active}
-              >
-                {NOTE_TYPES.map((type) => (
-                  <option key={type}>{type}</option>
-                ))}
-              </select>
-              <span>{saveStatus}</span>
-              {active?.status && <span className="capitalize">{active.status}</span>}
+            <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <select
+                  className="rounded border border-gray-200 bg-white px-2 py-1"
+                  value={active?.note_type || "General Note"}
+                  onChange={(event) => void updateActive({ note_type: event.target.value })}
+                  disabled={!active}
+                  title={active ? NOTE_TYPE_HELP[active.note_type] || NOTE_TYPE_HELP["General Note"] : "Choose a note type"}
+                >
+                  {NOTE_TYPES.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+                <button
+                  className="icon-btn h-8 w-8"
+                  title={active ? NOTE_TYPE_HELP[active.note_type] || NOTE_TYPE_HELP["General Note"] : "Note types guide formatting and warnings."}
+                  disabled={!active}
+                >
+                  <Info size={15} />
+                </button>
+              </div>
+              <span className="capitalize">{statusText()}</span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
