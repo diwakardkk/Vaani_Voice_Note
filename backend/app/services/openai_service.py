@@ -13,6 +13,10 @@ from .settings_service import get_api_key
 SYSTEM_PROMPT = """You convert raw voice transcripts into clean local-first notes.
 Return only strict JSON matching the requested schema.
 Use one allowed note_type value as a string, never as an array.
+Preserve the user's original language. Never translate the transcript.
+Do not paraphrase, rewrite, or rephrase the original content.
+For clean_transcript, keep the same words as the transcript except for obvious duplicated filler caused by speech recognition.
+For structured_markdown, organize the original wording with headings/bullets, but do not translate or rewrite the user's sentences.
 For Doctor Note, add the sentence "AI prepared draft. Doctor review required." to warnings_or_missing_info.
 Do not invent facts. Put missing or uncertain details in warnings_or_missing_info."""
 
@@ -121,8 +125,11 @@ def decorate_note_content(db: Session, content: str, current_type: str = "Genera
                 "role": "system",
                 "content": (
                     "You are a careful note editor for VaaniNotes AI. Decorate and organize the user's note "
-                    "without changing facts. Use clear headings, short paragraphs, bullet points, checklists, "
+                    "without translating, paraphrasing, or changing the user's original wording. "
+                    "Preserve the original language exactly. Use clear headings, short paragraphs, bullet points, checklists, "
                     "tables only when useful, and a polished professional structure. Keep the tone simple and readable. "
+                    "For clean_transcript, return the original note content exactly as provided, not a rewritten version. "
+                    "For structured_markdown, arrange the original sentences under headings/bullets without rewriting them. "
                     "Do not add a Raw Original or raw transcript section yourself; the app will append it after your output. "
                     "Return only strict JSON matching the schema. note_type must be one string, not an array. For Doctor Note include "
                     '"AI prepared draft. Doctor review required." in warnings_or_missing_info.'

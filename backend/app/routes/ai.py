@@ -76,6 +76,8 @@ def format_note(note_id: int, db: Session = Depends(get_db)):
         note.status = "processing"
         db.commit()
         formatted = format_transcript(db, transcript, note.note_type)
+        raw_original = transcript.strip()
+        formatted_markdown = _append_raw_original(formatted.structured_markdown, raw_original)
         update_note(
             db,
             note,
@@ -84,10 +86,10 @@ def format_note(note_id: int, db: Session = Depends(get_db)):
                 note_type=formatted.note_type,
                 summary=formatted.summary,
                 tags=formatted.tags,
-                clean_transcript=formatted.clean_transcript,
-                structured_content=formatted.structured_markdown,
-                markdown_content=formatted.structured_markdown,
-                plain_text=formatted.clean_transcript,
+                clean_transcript=raw_original,
+                structured_content=formatted_markdown,
+                markdown_content=formatted_markdown,
+                plain_text=raw_original,
                 status="saved",
             ),
             create_version=False,
@@ -127,11 +129,11 @@ def decorate_note(note_id: int, db: Session = Depends(get_db)):
                 note_type=decorated.note_type,
                 summary=decorated.summary,
                 tags=decorated.tags,
-                clean_transcript=decorated.clean_transcript,
+                clean_transcript=raw_original,
                 structured_content=decorated_markdown,
                 markdown_content=decorated_markdown,
                 html_content="",
-                plain_text=f"{decorated.clean_transcript}\n\nRaw Original\n\n{raw_original}".strip(),
+                plain_text=raw_original,
                 status="saved",
             ),
             create_version=True,
