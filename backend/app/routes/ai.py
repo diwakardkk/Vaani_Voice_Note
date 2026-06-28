@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Note
+from ..models import AudioSession, Note
 from ..schemas import NoteUpdate
 from ..services.note_service import serialize_note, update_note
+from ..services.audio_service import pop_session_baseline
 from ..services.openai_service import decorate_note_content, format_transcript, transcribe_audio
 from ..services.settings_service import get_bool
 
@@ -45,6 +46,28 @@ def _append_raw_original(decorated_markdown: str, raw_original: str) -> str:
     return f"{decorated}\n\n---\n\n{RAW_ORIGINAL_HEADING}\n\n{raw}".strip()
 
 
+def _append_transcript(existing: str, addition: str) -> str:
+    existing_text = existing.strip()
+    addition_text = addition.strip()
+    if not existing_text:
+        return addition_text
+    if not addition_text or existing_text.endswith(addition_text):
+        return existing_text
+    return f"{existing_text}\n\n{addition_text}"
+
+
+def _recording_baseline(db: Session, note: Note) -> str:
+    if not note.audio_path:
+        return ""
+    session = (
+        db.query(AudioSession)
+        .filter(AudioSession.note_id == note.id, AudioSession.file_path == note.audio_path)
+        .order_by(AudioSession.id.desc())
+        .first()
+    )
+    return pop_session_baseline(session.session_id) if session else ""
+
+
 @router.post("/transcribe/{note_id}")
 def transcribe(note_id: int, db: Session = Depends(get_db)):
     note = _get_note(db, note_id)
@@ -54,7 +77,13 @@ def transcribe(note_id: int, db: Session = Depends(get_db)):
         note.status = "processing"
         db.commit()
         transcript = transcribe_audio(db, note.audio_path)
-        update_note(db, note, NoteUpdate(raw_transcript=transcript, clean_transcript=transcript, status="saved"), create_version=False)
+        combined_transcript = _append_transcript(_recording_baseline(db, note), transcript)
+        update_note(
+            db,
+            note,
+            NoteUpdate(raw_transcript=combined_transcript, clean_transcript=combined_transcript, plain_text=combined_transcript, status="saved"),
+            create_version=False,
+        )
         if get_bool(db, "delete_audio_after_transcription", False) and note.audio_path:
             Path(note.audio_path).unlink(missing_ok=True)
             note.audio_path = None
@@ -63,7 +92,7 @@ def transcribe(note_id: int, db: Session = Depends(get_db)):
         note.status = "failed"
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"raw_transcript": transcript, "note": serialize_note(note)}
+    return {"raw_transcript": combined_transcript, "note": serialize_note(note)}
 
 
 @router.post("/format/{note_id}")

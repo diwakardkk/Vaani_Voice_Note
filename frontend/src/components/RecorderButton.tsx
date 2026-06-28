@@ -192,12 +192,13 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
         return;
       }
       const current = note ?? (await onCreateNote());
+      const startingTranscript = (current.plain_text || current.clean_transcript || current.raw_transcript || "").trim();
       noteIdRef.current = current.id;
-      finalTranscriptRef.current = "";
+      finalTranscriptRef.current = startingTranscript;
       awaitingWakeCommandRef.current = false;
       clearRecognitionRestart();
       setCommandMode(false);
-      setLiveTranscript("");
+      setLiveTranscript(startingTranscript);
       const stream = await getMicStream();
       streamRef.current = stream;
       const mimeType = supportedAudioMimeType();

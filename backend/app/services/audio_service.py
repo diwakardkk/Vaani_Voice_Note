@@ -9,6 +9,9 @@ from ..config import AUDIO_DIR
 from ..models import AudioSession, Note
 
 
+_SESSION_BASELINES: dict[str, str] = {}
+
+
 def extension_from_mime(mime_type: str | None) -> str:
     if not mime_type:
         return ".webm"
@@ -30,11 +33,16 @@ def start_audio_session(db: Session, note_id: int, mime_type: str | None) -> Aud
     db.add(session)
     note = db.get(Note, note_id)
     if note:
+        _SESSION_BASELINES[session_id] = (note.plain_text or note.clean_transcript or note.raw_transcript or "").strip()
         note.audio_path = str(path)
         note.status = "recording"
     db.commit()
     db.refresh(session)
     return session
+
+
+def pop_session_baseline(session_id: str) -> str:
+    return _SESSION_BASELINES.pop(session_id, "")
 
 
 async def append_chunk(db: Session, session_id: str, chunk: UploadFile) -> int:
