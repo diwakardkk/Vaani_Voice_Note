@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import NoteEditor from "./components/NoteEditor";
 import OnboardingGuide from "./components/OnboardingGuide";
-import RecorderButton from "./components/RecorderButton";
+import RecorderButton, { type RecorderControls } from "./components/RecorderButton";
 import SettingsPanel from "./components/SettingsPanel";
 import Sidebar from "./components/Sidebar";
 import StatusBanner from "./components/StatusBanner";
@@ -21,7 +21,7 @@ const NOTE_TYPES = [
 ];
 
 type Banner = { message: string; tone: "info" | "warning" | "error" } | null;
-type PendingConfirmation = { title: string; message: string; label: string; action: () => void } | null;
+type PendingConfirmation = { title: string; message: string; label: string; phrase?: string; action: () => void } | null;
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -35,6 +35,7 @@ export default function App() {
   const [pending, setPending] = useState<PendingConfirmation>(null);
   const autosaveRef = useRef<number | undefined>();
   const liveSaveRef = useRef<number | undefined>();
+  const recorderControlsRef = useRef<RecorderControls | null>(null);
 
   const showStatus = useCallback((message: string, tone: "info" | "warning" | "error" = "info") => {
     setBanner({ message, tone });
@@ -201,31 +202,38 @@ export default function App() {
 
   async function deleteActive() {
     if (!active) return;
-    const deletingId = active.id;
-    const deleted = await api.deleteNote(active.id);
-    setNotes((current) => current.filter((note) => note.id !== deleted.id));
-    setActive(notes.find((note) => note.id !== deletingId) ?? null);
+    await deleteNote(active);
+  }
+
+  async function deleteNote(note: Note) {
+    const deletingId = note.id;
+    const deleted = await api.deleteNote(note.id);
+    setNotes((current) => {
+      const next = current.filter((note) => note.id !== deleted.id);
+      setActive((activeNote) => (activeNote?.id === deletingId ? next[0] ?? null : activeNote));
+      return next;
+    });
     showStatus("Note moved to trash.");
   }
 
   async function exportActive(format: "markdown" | "txt" | "html" | "pdf") {
     if (!active) return;
-    if (active.note_type === "Doctor Note") {
+    await exportNote(active, format);
+  }
+
+  async function exportNote(note: Note, format: "markdown" | "txt" | "html" | "pdf", confirmed = false) {
+    if (note.note_type === "Doctor Note" && !confirmed) {
       setPending({
         title: "Export doctor note?",
         message: "This may contain sensitive medical information. Confirm before exporting.",
         label: "Export",
-        action: () => void exportActiveConfirmed(format)
+        phrase: "Yes export",
+        action: () => void exportNote(note, format, true)
       });
       return;
     }
-    await exportActiveConfirmed(format);
-  }
-
-  async function exportActiveConfirmed(format: "markdown" | "txt" | "html" | "pdf") {
-    if (!active) return;
     try {
-      const result = await api.exportNote(active.id, format);
+      const result = await api.exportNote(note.id, format);
       window.open(result.download_url, "_blank");
       showStatus(`Export created: ${result.file_name}`);
     } catch (error) {
@@ -235,10 +243,14 @@ export default function App() {
 
   async function decorateActive() {
     if (!active) return;
+    await decorateNote(active);
+  }
+
+  async function decorateNote(note: Note) {
     showStatus("Decorating note with OpenAI API...");
     setSaveStatus("Decorating...");
     try {
-      const result = await api.decorate(active.id);
+      const result = await api.decorate(note.id);
       replaceNote(result.note);
       setSaveStatus("Saved");
       showStatus("Note decorated and saved.");
@@ -250,9 +262,36 @@ export default function App() {
 
   const filteredNotes = useMemo(() => notes, [notes]);
 
+  function findNoteByTitle(title?: unknown): Note | null {
+    if (!title || typeof title !== "string") return active;
+    const normalized = title.toLowerCase().trim();
+    return notes.find((note) => note.title.toLowerCase().includes(normalized)) || null;
+  }
+
+  function noteLabel(note: Note | null): string {
+    return note ? `"${note.title}"` : "this note";
+  }
+
   async function submitWakeCommand(command: string) {
     const cleaned = command.trim();
     if (!cleaned) return;
+    if (pending) {
+      const phrase = (pending.phrase || pending.label || "").toLowerCase();
+      const lower = cleaned.toLowerCase();
+      if (lower.includes("cancel")) {
+        setPending(null);
+        showStatus("Command cancelled.");
+        return;
+      }
+      if (phrase && lower.includes(phrase)) {
+        const action = pending.action;
+        setPending(null);
+        action();
+        return;
+      }
+      showStatus(`Say "${pending.phrase || pending.label}" to confirm, or "cancel".`, "warning");
+      return;
+    }
     showStatus(`Vaani command: ${cleaned}`);
     try {
       const result = await api.parseCommand(`Vaani ${cleaned}`, active?.id, active?.plain_text || active?.summary || "");
@@ -268,14 +307,15 @@ export default function App() {
         title: "Confirm command",
         message: `This command needs confirmation. Say or choose "${result.confirmation_phrase || "Yes confirm"}" to continue.`,
         label: result.confirmation_phrase || "Confirm",
-        action: () => runCommand(result)
+        phrase: result.confirmation_phrase || "Yes confirm",
+        action: () => runCommand(result, true)
       });
       return;
     }
-    runCommand(result);
+    runCommand(result, false);
   }
 
-  function runCommand(result: CommandResult) {
+  function runCommand(result: CommandResult, confirmed = false) {
     const params = result.parameters;
     switch (result.action) {
       case "search_notes":
@@ -302,15 +342,75 @@ export default function App() {
       case "open_note":
         if (params.mode === "last" && notes[0]) setActive(notes[0]);
         if (params.title) {
-          const found = notes.find((note) => note.title.toLowerCase().includes(String(params.title).toLowerCase()));
+          const found = findNoteByTitle(params.title);
           if (found) setActive(found);
+          else showStatus(`No note found titled "${String(params.title)}".`, "warning");
         }
         break;
       case "delete_note":
-        void deleteActive();
+        {
+          if (!confirmed) {
+            setPending({
+              title: "Delete note?",
+              message: "This command will move a note to trash. Say or choose \"Yes delete\" to continue.",
+              label: "Yes delete",
+              phrase: "Yes delete",
+              action: () => runCommand(result, true)
+            });
+            break;
+          }
+          const target = findNoteByTitle(params.title);
+          if (!target) {
+            showStatus("No matching note found to delete.", "warning");
+            break;
+          }
+          void deleteNote(target);
+        }
         break;
       case "export_note":
-        void exportActiveConfirmed((params.format as "markdown" | "txt" | "html" | "pdf") || "markdown");
+        {
+          const target = findNoteByTitle(params.title);
+          if (!target) {
+            showStatus("No matching note found to export.", "warning");
+            break;
+          }
+          const format = (params.format as "markdown" | "txt" | "html" | "pdf") || "pdf";
+          void exportNote(target, format, confirmed);
+        }
+        break;
+      case "decorate_note":
+        {
+          const target = findNoteByTitle(params.title);
+          if (!target) {
+            showStatus("No matching note found to decorate.", "warning");
+            break;
+          }
+          void decorateNote(target);
+        }
+        break;
+      case "rename_note":
+        if (typeof params.title === "string" && params.title.trim()) {
+          const target = findNoteByTitle(params.target_title);
+          if (target) void renameNote(target, params.title.trim());
+        } else {
+          showStatus("Please say the new title after rename to.", "warning");
+        }
+        break;
+      case "update_note":
+        if (typeof params.content === "string" && params.content.trim()) {
+          const content = escapeHtml(params.content.trim());
+          const target = findNoteByTitle(params.title);
+          if (!target) {
+            showStatus("No matching note found to update.", "warning");
+            break;
+          }
+          const html = `${target.html_content || ""}<p>${content}</p>`;
+          const text = `${target.plain_text || ""}\n${params.content.trim()}`.trim();
+          void api.updateNote(target.id, { html_content: html, plain_text: text, status: "saved" }).then(replaceNote);
+          showStatus(`Updated ${noteLabel(target)}.`);
+        } else if (typeof params.instruction === "string") {
+          showStatus("I heard the update command, but need content to add.", "warning");
+        }
         break;
       case "change_note_type":
         void updateActive({ note_type: String(params.note_type || "General Note") });
@@ -320,10 +420,16 @@ export default function App() {
         else showStatus("No summary is available yet.", "warning");
         break;
       case "start_recording":
-        showStatus("Use the Start Voice Note button to begin recording.");
+        recorderControlsRef.current?.start();
         break;
       case "stop_recording":
-        showStatus("Use the Stop button in the recording controls.");
+        recorderControlsRef.current?.stop();
+        break;
+      case "pause_recording":
+        recorderControlsRef.current?.pause();
+        break;
+      case "resume_recording":
+        recorderControlsRef.current?.resume();
         break;
       default:
         showStatus("Command parsed. Editing commands are kept as text guidance in this MVP.");
@@ -416,12 +522,14 @@ export default function App() {
         <div className="border-t border-gray-200 bg-white px-6 py-4">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
             <RecorderButton
+              ref={recorderControlsRef}
               note={active}
               onCreateNote={createNote}
               onNoteUpdated={replaceNote}
               onLiveTranscript={handleLiveTranscript}
               onWakeCommand={(command) => void submitWakeCommand(command)}
               onStatus={showStatus}
+              confirmationPhrase={pending?.phrase || pending?.label}
             />
             <div className="text-right text-sm text-gray-600">
               <div>Transcript status</div>

@@ -1,5 +1,5 @@
 import { Pause, Play, Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api, type Note } from "../services/api";
 import { formatTimer, supportedAudioMimeType } from "../services/recorder";
 import { createSpeechRecognition, type SpeechRecognitionLike } from "../services/voiceCommands";
@@ -11,11 +11,23 @@ type Props = {
   onLiveTranscript: (noteId: number, transcript: string) => void;
   onWakeCommand: (command: string) => void;
   onStatus: (message: string, tone?: "info" | "warning" | "error") => void;
+  confirmationPhrase?: string;
 };
 
 type MicState = "unknown" | "checking" | "prompt" | "ready" | "blocked" | "unsupported" | "insecure";
 
-export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLiveTranscript, onWakeCommand, onStatus }: Props) {
+export type RecorderControls = {
+  start: () => void;
+  stop: () => void;
+  pause: () => void;
+  resume: () => void;
+  isRecording: () => boolean;
+};
+
+const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButton(
+  { note, onCreateNote, onNoteUpdated, onLiveTranscript, onWakeCommand, onStatus, confirmationPhrase },
+  ref
+) {
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -32,6 +44,14 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
   const awaitingWakeCommandRef = useRef(false);
   const recordingRef = useRef(false);
   const pausedRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    start: () => void start(),
+    stop: () => void stop(),
+    pause: () => pauseRecording(),
+    resume: () => resumeRecording(),
+    isRecording: () => recordingRef.current
+  }));
 
   useEffect(() => {
     if (!recording || paused) return;
@@ -161,6 +181,10 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
 
   async function start() {
     try {
+      if (recordingRef.current) {
+        onStatus("Recording is already active.");
+        return;
+      }
       if (!window.isSecureContext) {
         setMicState("insecure");
         openHttpsForMicrophone();
@@ -251,12 +275,18 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
   }
 
   function handleFinalSpeechPhrase(noteId: number, phrase: string) {
-    const wakeMatch = phrase.match(/\bvaani\b[:,]?\s*/i);
+    const wakeMatch = phrase.match(/\b(?:hey\s+)?vaani\b[:,]?\s*/i);
+    const spokenConfirmation = confirmationPhrase?.trim().toLowerCase();
+    const lowerPhrase = phrase.trim().toLowerCase();
     if (awaitingWakeCommandRef.current) {
       awaitingWakeCommandRef.current = false;
       setCommandMode(false);
       const command = phrase.trim();
       if (command) onWakeCommand(command);
+      return;
+    }
+    if (spokenConfirmation && (lowerPhrase.includes(spokenConfirmation) || lowerPhrase.includes("cancel"))) {
+      onWakeCommand(phrase.trim());
       return;
     }
     if (!wakeMatch || wakeMatch.index === undefined) {
@@ -276,23 +306,36 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
   }
 
   function pause() {
+    if (pausedRef.current) {
+      resumeRecording();
+      return;
+    }
+    pauseRecording();
+  }
+
+  function pauseRecording() {
     const recorder = recorderRef.current;
     if (!recorder) return;
-    if (paused) {
-      recorder.resume();
-      pausedRef.current = false;
-      try {
-        recognitionRef.current?.start();
-      } catch {
-        // Recognition may already be active.
-      }
-      setPaused(false);
-    } else {
-      recorder.pause();
-      pausedRef.current = true;
-      recognitionRef.current?.stop();
-      setPaused(true);
+    if (pausedRef.current) return;
+    recorder.pause();
+    pausedRef.current = true;
+    recognitionRef.current?.stop();
+    setPaused(true);
+    onStatus("Recording paused.");
+  }
+
+  function resumeRecording() {
+    const recorder = recorderRef.current;
+    if (!recorder || !pausedRef.current) return;
+    recorder.resume();
+    pausedRef.current = false;
+    try {
+      recognitionRef.current?.start();
+    } catch {
+      // Recognition may already be active.
     }
+    setPaused(false);
+    onStatus("Recording resumed.");
   }
 
   async function stop() {
@@ -388,4 +431,6 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
       )}
     </div>
   );
-}
+});
+
+export default RecorderButton;
