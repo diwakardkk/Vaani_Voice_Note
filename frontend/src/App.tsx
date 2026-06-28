@@ -1,4 +1,4 @@
-import { Download, FileText, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Download, FileText, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import NoteEditor from "./components/NoteEditor";
@@ -89,6 +89,10 @@ export default function App() {
 
   function replaceNote(note: Note) {
     setActive(note);
+    mergeNote(note);
+  }
+
+  function mergeNote(note: Note) {
     setNotes((current) => {
       const exists = current.some((item) => item.id === note.id);
       const next = exists ? current.map((item) => (item.id === note.id ? note : item)) : [note, ...current];
@@ -251,12 +255,27 @@ export default function App() {
     setSaveStatus("Decorating...");
     try {
       const result = await api.decorate(note.id);
-      replaceNote(result.note);
+      mergeNote(result.note);
       setSaveStatus("Saved");
       showStatus(`Decorated copy created from ${noteLabel(note)}.`);
     } catch (error) {
       setSaveStatus("Error saving");
       showStatus(error instanceof Error ? error.message : "Decorate failed", "error");
+    }
+  }
+
+  async function copyActiveText() {
+    if (!active) return;
+    const text = active.plain_text || active.clean_transcript || active.raw_transcript || active.markdown_content || active.structured_content || "";
+    if (!text.trim()) {
+      showStatus("There is no text to copy yet.", "warning");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showStatus("Note text copied.");
+    } catch {
+      showStatus("Copy failed. Please select the text manually.", "error");
     }
   }
 
@@ -476,6 +495,10 @@ export default function App() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button className="btn-secondary" onClick={() => void copyActiveText()} disabled={!active}>
+              <Copy size={17} />
+              Copy
+            </button>
             <button className="btn-secondary" onClick={() => void decorateActive()} disabled={!active}>
               <Sparkles size={17} />
               Decorate

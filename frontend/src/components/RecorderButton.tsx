@@ -9,7 +9,7 @@ type Props = {
   onCreateNote: () => Promise<Note>;
   onNoteUpdated: (note: Note) => void;
   onLiveTranscript: (noteId: number, transcript: string) => void;
-  onWakeCommand: (command: string) => void;
+  onWakeCommand: (command: string) => void | Promise<void>;
   onStatus: (message: string, tone?: "info" | "warning" | "error") => void;
   confirmationPhrase?: string;
 };
@@ -44,7 +44,10 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
   const awaitingWakeCommandRef = useRef(false);
   const recordingRef = useRef(false);
   const pausedRef = useRef(false);
+  const commandModeRef = useRef(false);
   const recognitionRestartRef = useRef<number | undefined>();
+  const recognitionWatchdogRef = useRef<number | undefined>();
+  const lastSpeechEventRef = useRef(0);
 
   useImperativeHandle(ref, () => ({
     start: () => void start(),
@@ -196,7 +199,9 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       noteIdRef.current = current.id;
       finalTranscriptRef.current = startingTranscript;
       awaitingWakeCommandRef.current = false;
+      commandModeRef.current = false;
       clearRecognitionRestart();
+      clearRecognitionWatchdog();
       setCommandMode(false);
       setLiveTranscript(startingTranscript);
       const stream = await getMicStream();
@@ -231,12 +236,14 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
 
   function startLiveTranscript(noteId: number) {
     clearRecognitionRestart();
+    clearRecognitionWatchdog();
     const recognition = createSpeechRecognition({ continuous: true, interimResults: true });
     if (!recognition) {
       onStatus("Live typing is not supported in this browser. Audio recording still works.", "warning");
       return;
     }
     recognition.onresult = (event) => {
+      lastSpeechEventRef.current = Date.now();
       let interim = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const phrase = event.results[index][0].transcript;
@@ -256,11 +263,13 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       }
     };
     recognition.onend = () => {
-      if (recordingRef.current && !pausedRef.current) scheduleRecognitionRestart(noteId);
+      if (recordingRef.current && !pausedRef.current && !commandModeRef.current) scheduleRecognitionRestart(noteId);
     };
     recognitionRef.current = recognition;
     try {
+      lastSpeechEventRef.current = Date.now();
       recognition.start();
+      scheduleRecognitionWatchdog(noteId);
     } catch {
       scheduleRecognitionRestart(noteId);
     }
@@ -271,12 +280,57 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     recognitionRestartRef.current = undefined;
   }
 
+  function clearRecognitionWatchdog() {
+    window.clearTimeout(recognitionWatchdogRef.current);
+    recognitionWatchdogRef.current = undefined;
+  }
+
+  function scheduleRecognitionWatchdog(noteId: number) {
+    if (!recordingRef.current || pausedRef.current || commandModeRef.current) return;
+    clearRecognitionWatchdog();
+    recognitionWatchdogRef.current = window.setTimeout(() => {
+      if (!recordingRef.current || pausedRef.current || commandModeRef.current) return;
+      if (Date.now() - lastSpeechEventRef.current > 10000) {
+        try {
+          recognitionRef.current?.stop();
+        } catch {
+          scheduleRecognitionRestart(noteId);
+        }
+      } else {
+        scheduleRecognitionWatchdog(noteId);
+      }
+    }, 5000);
+  }
+
   function scheduleRecognitionRestart(noteId: number) {
-    if (!recordingRef.current || pausedRef.current) return;
+    if (!recordingRef.current || pausedRef.current || commandModeRef.current) return;
     clearRecognitionRestart();
+    clearRecognitionWatchdog();
     recognitionRestartRef.current = window.setTimeout(() => {
-      if (recordingRef.current && !pausedRef.current) startLiveTranscript(noteId);
+      if (recordingRef.current && !pausedRef.current && !commandModeRef.current) startLiveTranscript(noteId);
     }, 350);
+  }
+
+  async function runWakeCommand(noteId: number, command: string) {
+    const cleaned = command.trim();
+    if (!cleaned) return;
+    commandModeRef.current = true;
+    awaitingWakeCommandRef.current = false;
+    clearRecognitionRestart();
+    clearRecognitionWatchdog();
+    setCommandMode(true);
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // Recognition may already be stopped.
+    }
+    try {
+      await onWakeCommand(cleaned);
+    } finally {
+      commandModeRef.current = false;
+      setCommandMode(false);
+      if (recordingRef.current && !pausedRef.current) startLiveTranscript(noteId);
+    }
   }
 
   function appendTranscript(noteId: number, phrase: string) {
@@ -292,14 +346,12 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     const spokenConfirmation = confirmationPhrase?.trim().toLowerCase();
     const lowerPhrase = phrase.trim().toLowerCase();
     if (awaitingWakeCommandRef.current) {
-      awaitingWakeCommandRef.current = false;
-      setCommandMode(false);
       const command = phrase.trim();
-      if (command) onWakeCommand(command);
+      if (command) void runWakeCommand(noteId, command);
       return;
     }
     if (spokenConfirmation && (lowerPhrase.includes(spokenConfirmation) || lowerPhrase.includes("cancel"))) {
-      onWakeCommand(phrase.trim());
+      void runWakeCommand(noteId, phrase.trim());
       return;
     }
     if (!wakeMatch || wakeMatch.index === undefined) {
@@ -310,7 +362,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     const command = phrase.slice(wakeMatch.index + wakeMatch[0].length).trim();
     appendTranscript(noteId, beforeWake);
     if (command) {
-      onWakeCommand(command);
+      void runWakeCommand(noteId, command);
     } else {
       awaitingWakeCommandRef.current = true;
       setCommandMode(true);
@@ -333,6 +385,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     recorder.pause();
     pausedRef.current = true;
     clearRecognitionRestart();
+    clearRecognitionWatchdog();
     recognitionRef.current?.stop();
     setPaused(true);
     onStatus("Recording paused.");
@@ -360,17 +413,16 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     recordingRef.current = false;
     pausedRef.current = false;
     clearRecognitionRestart();
+    clearRecognitionWatchdog();
     recognitionRef.current?.stop();
     setRecording(false);
     setPaused(false);
-    onStatus("Processing with OpenAI API...");
+    onStatus("Transcribing audio...");
     try {
       const finished = await api.finishAudio(sessionId);
       const transcribed = await api.transcribe(finished.note_id);
       onNoteUpdated(transcribed.note);
-      const formatted = await api.format(finished.note_id);
-      onNoteUpdated(formatted.note);
-      onStatus("Transcript formatted and saved.");
+      onStatus("Transcript saved. Use Decorate only when you want formatting.");
     } catch (error) {
       onStatus(error instanceof Error ? error.message : "Processing failed. Raw audio is still saved locally.", "error");
       if (noteIdRef.current) {

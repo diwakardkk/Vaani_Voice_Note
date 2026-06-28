@@ -59,6 +59,7 @@ def transcribe_audio(db: Session, audio_path: str) -> str:
         result = client.audio.transcriptions.create(
             model=settings.openai_transcription_model,
             file=audio_file,
+            prompt="Transcribe in the same language or mixed languages spoken by the user. Do not translate.",
         )
     return getattr(result, "text", "") or str(result)
 
@@ -127,7 +128,8 @@ def decorate_note_content(db: Session, content: str, current_type: str = "Genera
                     "You are a careful note editor for VaaniNotes AI. Decorate and organize the user's note "
                     "without translating, paraphrasing, or changing the user's original wording. "
                     "Preserve the original language exactly. Use clear headings, short paragraphs, bullet points, checklists, "
-                    "tables only when useful, and a polished professional structure. Keep the tone simple and readable. "
+                    "tables only when useful, and a polished professional structure. Do not summarize the note. "
+                    "Do not add highlights, important points, action items, or conclusions unless those sections already exist in the content. "
                     "For clean_transcript, return the original note content exactly as provided, not a rewritten version. "
                     "For structured_markdown, arrange the original sentences under headings/bullets without rewriting them. "
                     "Do not add a Raw Original or raw transcript section yourself; the app will append it after your output. "

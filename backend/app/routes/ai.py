@@ -158,7 +158,7 @@ def decorate_note(note_id: int, db: Session = Depends(get_db)):
                 structured_content=decorated_markdown,
                 markdown_content=decorated_markdown,
                 plain_text=raw_original,
-                summary=decorated.summary,
+                summary="",
                 tags=decorated.tags,
                 status="saved",
             ),
