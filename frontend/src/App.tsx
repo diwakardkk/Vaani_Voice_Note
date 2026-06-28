@@ -253,7 +253,7 @@ export default function App() {
       const result = await api.decorate(note.id);
       replaceNote(result.note);
       setSaveStatus("Saved");
-      showStatus("Note decorated and saved.");
+      showStatus(`Decorated copy created from ${noteLabel(note)}.`);
     } catch (error) {
       setSaveStatus("Error saving");
       showStatus(error instanceof Error ? error.message : "Decorate failed", "error");

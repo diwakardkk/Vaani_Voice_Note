@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import AudioSession, Note
-from ..schemas import NoteUpdate
-from ..services.note_service import serialize_note, update_note
+from ..schemas import NoteCreate, NoteUpdate
+from ..services.note_service import create_note, serialize_note, update_note
 from ..services.audio_service import pop_session_baseline
 from ..services.openai_service import decorate_note_content, format_transcript, transcribe_audio
 from ..services.settings_service import get_bool
@@ -145,30 +145,24 @@ def decorate_note(note_id: int, db: Session = Depends(get_db)):
     if not content:
         raise HTTPException(status_code=400, detail="There is no note content to decorate yet.")
     try:
-        note.status = "processing"
-        db.commit()
         decorated = decorate_note_content(db, content, note.note_type)
         raw_original = _raw_original_for_note(note, existing_content)
         decorated_markdown = _append_raw_original(decorated.structured_markdown, raw_original)
-        update_note(
+        decorated_note = create_note(
             db,
-            note,
-            NoteUpdate(
-                title=decorated.title or note.title,
+            NoteCreate(
+                title=f"{decorated.title or note.title} (Decorated)",
                 note_type=decorated.note_type,
-                summary=decorated.summary,
-                tags=decorated.tags,
+                raw_transcript=raw_original,
                 clean_transcript=raw_original,
                 structured_content=decorated_markdown,
                 markdown_content=decorated_markdown,
-                html_content="",
                 plain_text=raw_original,
+                summary=decorated.summary,
+                tags=decorated.tags,
                 status="saved",
             ),
-            create_version=True,
         )
     except Exception as exc:
-        note.status = "failed"
-        db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"decorated": decorated.model_dump(), "note": serialize_note(note)}
+    return {"decorated": decorated.model_dump(), "note": serialize_note(decorated_note)}

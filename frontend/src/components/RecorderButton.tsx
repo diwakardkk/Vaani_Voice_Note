@@ -223,7 +223,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       setSeconds(0);
       onNoteUpdated({ ...current, status: "recording" });
       startLiveTranscript(current.id);
-      onStatus("Recording started. Audio chunks are being saved locally.");
+      onStatus(`Recording started. New speech will append to "${current.title}".`);
     } catch (error) {
       onStatus(error instanceof Error ? error.message : "Microphone permission failed", "error");
     }
