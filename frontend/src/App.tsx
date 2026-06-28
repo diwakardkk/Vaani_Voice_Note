@@ -345,10 +345,11 @@ export default function App() {
 
   function statusText(): string {
     const current = active?.status || "";
-    if (!current) return saveStatus;
-    if (saveStatus.toLowerCase() === current.toLowerCase()) return saveStatus;
-    if (saveStatus === "Saved" && current === "saved") return saveStatus;
-    return `${saveStatus} · ${current}`;
+    if (current === "recording") return "Recording";
+    if (current === "processing") return "Processing";
+    if (current === "failed") return "Failed";
+    if (saveStatus) return saveStatus;
+    return current || "Ready";
   }
 
   async function submitWakeCommand(command: string) {
