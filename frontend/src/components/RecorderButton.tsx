@@ -251,7 +251,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     };
     recognition.onerror = (event) => {
       if (event.error !== "no-speech" && event.error !== "aborted") {
-        onStatus("Live typing paused briefly. Vaani will keep listening while recording is on.", "warning");
+        onStatus("Live typing paused briefly. Jojo will keep listening while recording is on.", "warning");
       }
     };
     recognition.onend = () => {
@@ -287,7 +287,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
   }
 
   function handleFinalSpeechPhrase(noteId: number, phrase: string) {
-    const wakeMatch = phrase.match(/\b(?:hey\s+)?vaani\b[:,]?\s*/i);
+    const wakeMatch = phrase.match(/\b(?:hey\s+)?jojo\b[:,]?\s*/i);
     const spokenConfirmation = confirmationPhrase?.trim().toLowerCase();
     const lowerPhrase = phrase.trim().toLowerCase();
     if (awaitingWakeCommandRef.current) {
@@ -313,7 +313,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     } else {
       awaitingWakeCommandRef.current = true;
       setCommandMode(true);
-      onStatus("Vaani is listening for a command.", "info");
+      onStatus("Jojo is listening for a command.", "info");
     }
   }
 
@@ -427,15 +427,15 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       </div>
       <div className="mt-2 text-xs text-gray-600">
         {micState === "ready"
-          ? `Using ${micLabel || "system default microphone"}. Say "Vaani" during recording to switch to command mode.`
+          ? `Using ${micLabel || "system default microphone"}. Say "Jojo" during recording to switch to command mode.`
           : micState === "insecure"
             ? "Chrome blocks mic on HTTP Wi-Fi pages. Click Open HTTPS, accept the local certificate once, then allow mic."
-            : 'Say "Vaani" during recording to switch to command mode.'}
+            : 'Say "Jojo" during recording to switch to command mode.'}
       </div>
       {recording && (
         <div className="mt-3 max-h-28 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-800">
           {commandMode
-            ? "Vaani command mode is active. Say the command now."
+            ? "Jojo command mode is active. Say the command now."
             : liveTranscript || "Listening... your words will appear here while you speak."}
         </div>
       )}

@@ -14,7 +14,7 @@ DANGEROUS_ACTIONS = {"delete_note", "permanent_delete_note", "overwrite_note", "
 
 
 def _strip_wake_word(command_text: str) -> tuple[str, bool]:
-    match = re.search(r"\b(?:hey\s+)?vaani\b[:,]?\s*", command_text, flags=re.IGNORECASE)
+    match = re.search(r"\b(?:hey\s+)?jojo\b[:,]?\s*", command_text, flags=re.IGNORECASE)
     if not match:
         return command_text.strip(), False
     return command_text[match.end() :].strip(), True

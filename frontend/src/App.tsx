@@ -292,12 +292,12 @@ export default function App() {
       showStatus(`Say "${pending.phrase || pending.label}" to confirm, or "cancel".`, "warning");
       return;
     }
-    showStatus(`Vaani command: ${cleaned}`);
+    showStatus(`Jojo command: ${cleaned}`);
     try {
-      const result = await api.parseCommand(`Vaani ${cleaned}`, active?.id, active?.plain_text || active?.summary || "");
+      const result = await api.parseCommand(`Jojo ${cleaned}`, active?.id, active?.plain_text || active?.summary || "");
       handleCommand(result);
     } catch (error) {
-      showStatus(error instanceof Error ? error.message : "Vaani command failed", "error");
+      showStatus(error instanceof Error ? error.message : "Jojo command failed", "error");
     }
   }
 
