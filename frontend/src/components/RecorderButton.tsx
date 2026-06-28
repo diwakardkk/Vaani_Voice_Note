@@ -68,6 +68,26 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
     }
   }
 
+  function httpsUrlForCurrentPage(): string {
+    const url = new URL(window.location.href);
+    url.protocol = "https:";
+    return url.toString();
+  }
+
+  function openHttpsForMicrophone() {
+    const nextUrl = httpsUrlForCurrentPage();
+    onStatus("Opening the secure Wi-Fi URL. Accept the local certificate warning once, then allow mic.", "warning");
+    window.location.assign(nextUrl);
+  }
+
+  function handleMicButton() {
+    if (micState === "insecure" || !window.isSecureContext) {
+      openHttpsForMicrophone();
+      return;
+    }
+    void preflightMicrophone(true);
+  }
+
   async function checkMicrophonePermission() {
     if (!window.isSecureContext) {
       setMicState("insecure");
@@ -99,7 +119,7 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
   async function preflightMicrophone(promptUser = true) {
     if (!window.isSecureContext) {
       setMicState("insecure");
-      if (promptUser) onStatus("Microphone access on Wi-Fi needs HTTPS. Open the HTTPS LAN URL, then allow mic.", "warning");
+      if (promptUser) openHttpsForMicrophone();
       return false;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -141,6 +161,11 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
 
   async function start() {
     try {
+      if (!window.isSecureContext) {
+        setMicState("insecure");
+        openHttpsForMicrophone();
+        return;
+      }
       const current = note ?? (await onCreateNote());
       noteIdRef.current = current.id;
       finalTranscriptRef.current = "";
@@ -315,8 +340,8 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
               Start Voice Note
             </button>
             {micState !== "ready" && (
-              <button className="btn-secondary h-14 px-4" onClick={() => void preflightMicrophone(true)}>
-                Allow Mic
+              <button className="btn-secondary h-14 px-4" onClick={handleMicButton}>
+                {micState === "insecure" ? "Open HTTPS" : "Allow Mic"}
               </button>
             )}
           </>
@@ -351,7 +376,7 @@ export default function RecorderButton({ note, onCreateNote, onNoteUpdated, onLi
         {micState === "ready"
           ? `Using ${micLabel || "system default microphone"}. Say "Vaani" during recording to switch to command mode.`
           : micState === "insecure"
-            ? "Microphone is blocked on insecure Wi-Fi URLs. Use HTTPS for LAN access."
+            ? "Chrome blocks mic on HTTP Wi-Fi pages. Click Open HTTPS, accept the local certificate once, then allow mic."
             : 'Say "Vaani" during recording to switch to command mode.'}
       </div>
       {recording && (

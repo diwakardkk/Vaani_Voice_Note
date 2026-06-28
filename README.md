@@ -136,7 +136,7 @@ https://YOUR_LOCAL_IP:8000
 
 If the browser shows a certificate warning, accept it only on your private network. For a fully trusted certificate on all devices, use a local trusted certificate tool such as `mkcert` and run Uvicorn with that certificate.
 
-After microphone permission is allowed once, VaaniNotes automatically uses the browser/system default input device, including a connected headset or earphone microphone.
+After microphone permission is allowed once, VaaniNotes automatically uses the browser/system default input device, including a connected headset or earphone microphone. If you accidentally open the HTTP Wi-Fi URL and click **Allow Mic**, the app redirects to the HTTPS URL automatically.
 
 ## Production Build
 
