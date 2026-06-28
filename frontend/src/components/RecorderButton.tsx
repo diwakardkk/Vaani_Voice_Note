@@ -35,6 +35,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
   const [micState, setMicState] = useState<MicState>("unknown");
   const [micLabel, setMicLabel] = useState("");
   const [commandMode, setCommandMode] = useState(false);
+  const liveTranscriptBoxRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -68,6 +69,12 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
   }, []);
+
+  useEffect(() => {
+    if (liveTranscriptBoxRef.current) {
+      liveTranscriptBoxRef.current.scrollTop = liveTranscriptBoxRef.current.scrollHeight;
+    }
+  }, [liveTranscript, commandMode]);
 
   function audioConstraints(): MediaTrackConstraints {
     return {
@@ -246,7 +253,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       lastSpeechEventRef.current = Date.now();
       let interim = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const phrase = event.results[index][0].transcript;
+        const phrase = normalizeDictationPhrase(event.results[index][0].transcript);
         if (event.results[index].isFinal) {
           handleFinalSpeechPhrase(noteId, phrase);
         } else {
@@ -335,10 +342,27 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
 
   function appendTranscript(noteId: number, phrase: string) {
     const cleaned = phrase.trim();
-    if (!cleaned) return;
-    finalTranscriptRef.current = `${finalTranscriptRef.current} ${cleaned}`.trim();
+    if (!cleaned && !phrase.includes("\n")) return;
+    finalTranscriptRef.current = appendWithSpacing(finalTranscriptRef.current, phrase);
     setLiveTranscript(finalTranscriptRef.current);
     onLiveTranscript(noteId, finalTranscriptRef.current);
+  }
+
+  function appendWithSpacing(existing: string, addition: string): string {
+    const normalized = addition.replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");
+    if (normalized.includes("\n") && !normalized.trim()) return `${existing.trimEnd()}\n`;
+    const next = normalized.trim();
+    if (!next) return existing;
+    if (!existing.trim()) return next;
+    if (next.startsWith("\n") || existing.endsWith("\n")) return `${existing}${next}`.trim();
+    return `${existing} ${next}`.trim();
+  }
+
+  function normalizeDictationPhrase(value: string): string {
+    return value
+      .replace(/\b(?:change\s+the\s+line|change\s+line|new\s+line|next\s+line|press\s+enter|enter)\b/gi, "\n")
+      .replace(/\b(?:line\s+change|nayi\s+line|nai\s+line|agli\s+line|agali\s+line)\b/gi, "\n")
+      .replace(/[ \t]{2,}/g, " ");
   }
 
   function handleFinalSpeechPhrase(noteId: number, phrase: string) {
@@ -486,7 +510,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
             : 'Say "Jojo" during recording to switch to command mode.'}
       </div>
       {recording && (
-        <div className="mt-3 max-h-28 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-800">
+        <div ref={liveTranscriptBoxRef} className="mt-3 max-h-28 whitespace-pre-wrap overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-800">
           {commandMode
             ? "Jojo command mode is active. Say the command now."
             : liveTranscript || "Listening... your words will appear here while you speak."}

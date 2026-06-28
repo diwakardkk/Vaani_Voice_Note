@@ -100,6 +100,10 @@ class ExportRequest(BaseModel):
     format: Literal["markdown", "txt", "html", "pdf"]
 
 
+class TranslationRequest(BaseModel):
+    target_language: str = "English"
+
+
 class ExportResponse(BaseModel):
     file_name: str
     file_path: str

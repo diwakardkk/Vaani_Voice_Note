@@ -1,4 +1,4 @@
-import { Copy, Download, FileText, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Download, FileText, Languages, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import NoteEditor from "./components/NoteEditor";
@@ -36,6 +36,7 @@ export default function App() {
   const autosaveRef = useRef<number | undefined>();
   const liveSaveRef = useRef<number | undefined>();
   const recorderControlsRef = useRef<RecorderControls | null>(null);
+  const editorScrollRef = useRef<HTMLElement | null>(null);
 
   const showStatus = useCallback((message: string, tone: "info" | "warning" | "error" = "info") => {
     setBanner({ message, tone });
@@ -61,6 +62,13 @@ export default function App() {
       })
       .catch((error) => showStatus(error instanceof Error ? error.message : "Settings could not be loaded", "error"));
   }, [showStatus]);
+
+  useEffect(() => {
+    if (active?.status !== "recording") return;
+    const scrollArea = editorScrollRef.current;
+    if (!scrollArea) return;
+    scrollArea.scrollTop = scrollArea.scrollHeight;
+  }, [active?.plain_text, active?.html_content, active?.status]);
 
   function openSettingsFromGuide() {
     setShowOnboarding(false);
@@ -274,6 +282,29 @@ export default function App() {
     }
   }
 
+  async function translateNote(note: Note, targetLanguage: string) {
+    const target = targetLanguage.trim();
+    if (!target) return;
+    showStatus(`Translating note to ${target}...`);
+    setSaveStatus("Translating...");
+    try {
+      const result = await api.translate(note.id, target);
+      replaceNote(result.note);
+      setSaveStatus("Saved");
+      showStatus(`Translation appended in ${target}.`);
+    } catch (error) {
+      setSaveStatus("Error saving");
+      showStatus(error instanceof Error ? error.message : "Translate failed", "error");
+    }
+  }
+
+  async function translateActive() {
+    if (!active) return;
+    const target = window.prompt("Translate note to which language?", "English")?.trim();
+    if (!target) return;
+    await translateNote(active, target);
+  }
+
   async function copyActiveText() {
     if (!active) return;
     const text = active.plain_text || active.clean_transcript || active.raw_transcript || active.markdown_content || active.structured_content || "";
@@ -417,6 +448,16 @@ export default function App() {
           void decorateNote(target);
         }
         break;
+      case "translate_note":
+        {
+          const target = findNoteByTitle(params.title);
+          if (!target) {
+            showStatus("No matching note found to translate.", "warning");
+            break;
+          }
+          void translateNote(target, String(params.target_language || "English"));
+        }
+        break;
       case "rename_note":
         if (typeof params.title === "string" && params.title.trim()) {
           const target = findNoteByTitle(params.target_title);
@@ -513,6 +554,10 @@ export default function App() {
               <Sparkles size={17} />
               Decorate
             </button>
+            <button className="btn-secondary" onClick={() => void translateActive()} disabled={!active}>
+              <Languages size={17} />
+              Translate
+            </button>
             <button className="btn-secondary" onClick={() => void exportActive("markdown")} disabled={!active}>
               <FileText size={17} />
               Markdown
@@ -543,7 +588,7 @@ export default function App() {
           <StatusBanner message={banner?.message} tone={banner?.tone} />
         </div>
 
-        <section className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+        <section ref={editorScrollRef} className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
           <div className="mx-auto max-w-4xl">
             {active?.note_type === "Doctor Note" && (
               <StatusBanner message="AI prepared draft. Doctor review required." tone="warning" />

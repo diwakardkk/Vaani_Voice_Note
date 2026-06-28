@@ -102,6 +102,9 @@ def _rule_based(command_text: str) -> CommandParseResponse:
         )
     if "summarize" in text:
         return CommandParseResponse(action="summarize_note")
+    translate_target = _extract_after(cleaned, r"(?:translate(?: this note)?(?: to| in)\s+)(.+)$")
+    if translate_target or text.startswith("translate"):
+        return CommandParseResponse(action="translate_note", parameters={"target_language": translate_target or "English"})
     for note_type in NOTE_TYPES:
         if note_type.lower().replace(" note", "") in text and ("convert" in text or "make" in text):
             return CommandParseResponse(action="change_note_type", parameters={"note_type": note_type})
@@ -144,7 +147,7 @@ def parse_command(db: Session, command_text: str, context: str | None = None) ->
                             "If the user says save and start/create a new note, use action save_and_new_note. "
                             "If the user asks for a new note, use action create_note. "
                             "Supported actions: create_note, save_note, save_and_new_note, open_note, search_notes, "
-                            "delete_note, decorate_note, export_note, rename_note, update_note, summarize_note, "
+                            "delete_note, decorate_note, translate_note, export_note, rename_note, update_note, summarize_note, "
                             "change_note_type, start_recording, stop_recording, pause_recording, resume_recording. "
                             "For delete use requires_confirmation true with confirmation_phrase Yes delete."
                         ),

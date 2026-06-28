@@ -159,3 +159,26 @@ def decorate_note_content(db: Session, content: str, current_type: str = "Genera
     if parsed.note_type not in NOTE_TYPES:
         parsed.note_type = "General Note"
     return parsed
+
+
+def translate_note_content(db: Session, content: str, target_language: str) -> str:
+    client = _client(db)
+    response = client.chat.completions.create(
+        model=settings.openai_chat_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Translate the user's note into the requested target language. "
+                    "Do not summarize, decorate, add headings, add facts, or remove details. "
+                    "Return only the translated text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Target language: {target_language}\n\nText:\n{content}",
+            },
+        ],
+        temperature=0,
+    )
+    return (response.choices[0].message.content or "").strip()

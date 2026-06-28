@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import AudioSession, Note
-from ..schemas import NoteUpdate
+from ..schemas import NoteUpdate, TranslationRequest
 from ..services.note_service import serialize_note, update_note
 from ..services.audio_service import pop_session_baseline
-from ..services.openai_service import decorate_note_content, format_transcript, transcribe_audio
+from ..services.openai_service import decorate_note_content, format_transcript, transcribe_audio, translate_note_content
 from ..services.settings_service import get_bool
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -58,6 +58,14 @@ def _append_raw_original(decorated_markdown: str, raw_original: str) -> str:
     if not raw:
         return decorated
     return f"{decorated}\n\n---\n\n{RAW_ORIGINAL_HEADING}\n\n{raw}".strip()
+
+
+def _append_section(markdown_content: str, heading: str, body: str) -> str:
+    section = f"## {heading}\n\n{body.strip()}".strip()
+    existing_raw = _extract_raw_original_section(markdown_content)
+    base = _strip_raw_original_section(markdown_content)
+    combined = f"{base}\n\n{section}".strip() if base else section
+    return _append_raw_original(combined, existing_raw) if existing_raw else combined
 
 
 def _append_transcript(existing: str, addition: str) -> str:
@@ -187,3 +195,41 @@ def decorate_note(note_id: int, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"decorated": decorated.model_dump(), "note": serialize_note(note)}
+
+
+@router.post("/translate/{note_id}")
+def translate_note(note_id: int, payload: TranslationRequest, db: Session = Depends(get_db)):
+    note = _get_note(db, note_id)
+    existing_content = (
+        note.markdown_content
+        or note.structured_content
+        or note.plain_text
+        or note.clean_transcript
+        or note.raw_transcript
+        or ""
+    ).strip()
+    source_content = _strip_raw_original_section(existing_content)
+    if not source_content:
+        raise HTTPException(status_code=400, detail="There is no note content to translate yet.")
+    target_language = (payload.target_language or "English").strip()
+    try:
+        note.status = "processing"
+        db.commit()
+        translated = translate_note_content(db, source_content, target_language)
+        translated_markdown = _append_section(existing_content, f"Translation ({target_language})", translated)
+        update_note(
+            db,
+            note,
+            NoteUpdate(
+                structured_content=translated_markdown,
+                markdown_content=translated_markdown,
+                html_content="",
+                status="saved",
+            ),
+            create_version=True,
+        )
+    except Exception as exc:
+        note.status = "failed"
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"translation": translated, "note": serialize_note(note)}

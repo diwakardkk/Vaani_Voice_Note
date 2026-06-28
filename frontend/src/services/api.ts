@@ -85,6 +85,12 @@ export const api = {
   format: (noteId: number) => request<{ formatted: unknown; note: Note }>(`/api/ai/format/${noteId}`, { method: "POST" }),
   decorate: (noteId: number) =>
     request<{ decorated: unknown; note: Note }>(`/api/ai/decorate/${noteId}`, { method: "POST" }),
+  translate: (noteId: number, target_language: string) =>
+    request<{ translation: string; note: Note }>(`/api/ai/translate/${noteId}`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ target_language })
+    }),
   exportNote: (noteId: number, format: "markdown" | "txt" | "html" | "pdf") =>
     request<{ file_name: string; file_path: string; download_url: string }>(`/api/export/${noteId}`, {
       method: "POST",
