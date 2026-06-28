@@ -6,7 +6,7 @@ export type SpeechRecognitionLike = {
   stop: () => void;
   onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
@@ -21,6 +21,10 @@ type SpeechRecognitionResultEvent = {
       };
     };
   };
+};
+
+type SpeechRecognitionErrorEvent = {
+  error?: string;
 };
 
 declare global {

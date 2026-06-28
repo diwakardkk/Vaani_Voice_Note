@@ -44,6 +44,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
   const awaitingWakeCommandRef = useRef(false);
   const recordingRef = useRef(false);
   const pausedRef = useRef(false);
+  const recognitionRestartRef = useRef<number | undefined>();
 
   useImperativeHandle(ref, () => ({
     start: () => void start(),
@@ -194,6 +195,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       noteIdRef.current = current.id;
       finalTranscriptRef.current = "";
       awaitingWakeCommandRef.current = false;
+      clearRecognitionRestart();
       setCommandMode(false);
       setLiveTranscript("");
       const stream = await getMicStream();
@@ -227,6 +229,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
   }
 
   function startLiveTranscript(noteId: number) {
+    clearRecognitionRestart();
     const recognition = createSpeechRecognition({ continuous: true, interimResults: true });
     if (!recognition) {
       onStatus("Live typing is not supported in this browser. Audio recording still works.", "warning");
@@ -246,24 +249,33 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
       setLiveTranscript(transcript);
       if (transcript) onLiveTranscript(noteId, transcript);
     };
-    recognition.onerror = () => {
-      onStatus("Live typing stopped. The final OpenAI transcript will still run after recording.", "warning");
+    recognition.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        onStatus("Live typing paused briefly. Vaani will keep listening while recording is on.", "warning");
+      }
     };
     recognition.onend = () => {
-      if (recordingRef.current && !pausedRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          // Browsers throw if recognition is already active.
-        }
-      }
+      if (recordingRef.current && !pausedRef.current) scheduleRecognitionRestart(noteId);
     };
     recognitionRef.current = recognition;
     try {
       recognition.start();
     } catch {
-      onStatus("Live typing could not start in this browser.", "warning");
+      scheduleRecognitionRestart(noteId);
     }
+  }
+
+  function clearRecognitionRestart() {
+    window.clearTimeout(recognitionRestartRef.current);
+    recognitionRestartRef.current = undefined;
+  }
+
+  function scheduleRecognitionRestart(noteId: number) {
+    if (!recordingRef.current || pausedRef.current) return;
+    clearRecognitionRestart();
+    recognitionRestartRef.current = window.setTimeout(() => {
+      if (recordingRef.current && !pausedRef.current) startLiveTranscript(noteId);
+    }, 350);
   }
 
   function appendTranscript(noteId: number, phrase: string) {
@@ -319,6 +331,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     if (pausedRef.current) return;
     recorder.pause();
     pausedRef.current = true;
+    clearRecognitionRestart();
     recognitionRef.current?.stop();
     setPaused(true);
     onStatus("Recording paused.");
@@ -329,11 +342,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     if (!recorder || !pausedRef.current) return;
     recorder.resume();
     pausedRef.current = false;
-    try {
-      recognitionRef.current?.start();
-    } catch {
-      // Recognition may already be active.
-    }
+    if (noteIdRef.current) startLiveTranscript(noteIdRef.current);
     setPaused(false);
     onStatus("Recording resumed.");
   }
@@ -349,6 +358,7 @@ const RecorderButton = forwardRef<RecorderControls, Props>(function RecorderButt
     streamRef.current?.getTracks().forEach((track) => track.stop());
     recordingRef.current = false;
     pausedRef.current = false;
+    clearRecognitionRestart();
     recognitionRef.current?.stop();
     setRecording(false);
     setPaused(false);
